@@ -3,23 +3,21 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-# --- Streamlit Config ---
+# ------------------ Page Setup ------------------
 st.set_page_config(
-    page_title="Student Performance Analyzer",
-    page_icon="📊",
+    page_title="📊 Student Performance Analyzer",
+    page_icon="🎓",
     layout="wide"
 )
+sns.set_theme(style="whitegrid")
 
-sns.set(style="whitegrid")
+st.title("🎓 Student Performance Analyzer (Pro)")
+st.caption("Analyze academic performance patterns using the Kaggle dataset.")
 
-st.title("📊 Student Performance Analyzer (Enhanced)")
-st.write("Upload or place `StudentsPerformance.csv` next to `app.py` and run:")
-st.code("streamlit run app.py")
-
-# --- File Loading ---
+# ------------------ Data Loading ------------------
 @st.cache_data
-def load_data(path: str):
-    df = pd.read_csv(path)
+def load_data(file):
+    df = pd.read_csv(file)
     df = df.rename(columns={
         "math score": "math_score",
         "reading score": "reading_score",
@@ -28,85 +26,102 @@ def load_data(path: str):
     df["average_score"] = df[["math_score", "reading_score", "writing_score"]].mean(axis=1)
     return df
 
-csv_name = "StudentsPerformance.csv"
+uploaded_file = st.sidebar.file_uploader("📂 Upload StudentsPerformance.csv", type=["csv"])
 
-try:
-    df = load_data(csv_name)
-except FileNotFoundError:
-    st.error(f"❌ Could not find `{csv_name}`. Please upload it or place it next to `app.py`.")
-    uploaded = st.file_uploader("Or upload your CSV file manually:")
-    if uploaded is not None:
-        df = load_data(uploaded)
-    else:
+if uploaded_file:
+    df = load_data(uploaded_file)
+else:
+    try:
+        df = load_data("StudentsPerformance.csv")
+    except FileNotFoundError:
+        st.warning("⚠️ Please upload or place `StudentsPerformance.csv` next to this app.")
         st.stop()
 
-# --- Sidebar Controls ---
-st.sidebar.header("Options")
-show_head = st.sidebar.checkbox("Show first 5 rows")
-show_boxplot = st.sidebar.checkbox("Show boxplot by gender", value=True)
-show_pairplot = st.sidebar.checkbox("Show pairplot (scatter matrix)", value=False)
+# ------------------ Sidebar Filters ------------------
+st.sidebar.header("🔍 Filter Data")
 
-# --- Show Data ---
-if show_head:
-    st.subheader("📋 First 5 Rows")
-    st.dataframe(df.head())
+# Dynamic filtering
+filter_cols = [c for c in ["gender", "race/ethnicity", "parental level of education", "lunch", "test preparation course"] if c in df.columns]
 
-# --- Descriptive Stats ---
-st.header("1️⃣ Descriptive Statistics")
-col1, col2 = st.columns(2)
+for col in filter_cols:
+    unique_vals = ["All"] + sorted(df[col].dropna().unique().tolist())
+    selection = st.sidebar.selectbox(f"Filter by {col}", unique_vals)
+    if selection != "All":
+        df = df[df[col] == selection]
 
-with col1:
-    st.metric("Math Mean", f"{df['math_score'].mean():.2f}")
-    st.metric("Reading Mean", f"{df['reading_score'].mean():.2f}")
-    st.metric("Writing Mean", f"{df['writing_score'].mean():.2f}")
+st.sidebar.markdown("---")
+show_raw = st.sidebar.checkbox("Show Raw Data", value=False)
 
-with col2:
-    st.metric("Math Median", f"{df['math_score'].median():.2f}")
-    st.metric("Math Mode", f"{df['math_score'].mode()[0]:.2f}")
-    st.metric("Average of Averages", f"{df['average_score'].mean():.2f}")
+# ------------------ Tabs Layout ------------------
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    "📈 Overview",
+    "📊 Descriptive Stats",
+    "🔥 Correlation & Insights",
+    "📚 Gender Analysis",
+    "📦 Raw Data"
+])
 
-# --- Standard Deviation ---
-st.header("2️⃣ Standard Deviation")
-st.dataframe(df[["math_score", "reading_score", "writing_score"]].std().to_frame("Std Dev"))
+# ------------------ Overview Tab ------------------
+with tab1:
+    st.subheader("📈 Overall Summary")
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Math Mean", f"{df['math_score'].mean():.2f}")
+    col2.metric("Reading Mean", f"{df['reading_score'].mean():.2f}")
+    col3.metric("Writing Mean", f"{df['writing_score'].mean():.2f}")
+    col4.metric("Overall Avg", f"{df['average_score'].mean():.2f}")
 
-# --- Correlation Heatmap ---
-st.header("3️⃣ Correlation Heatmap")
-fig, ax = plt.subplots(figsize=(6, 4))
-sns.heatmap(
-    df[["math_score", "reading_score", "writing_score", "average_score"]].corr(),
-    annot=True, cmap="coolwarm", ax=ax, fmt=".2f"
-)
-st.pyplot(fig)
-
-# --- Histogram ---
-st.header("4️⃣ Histogram of Math Scores")
-fig, ax = plt.subplots(figsize=(6, 4))
-ax.hist(df["math_score"], bins=10, color="skyblue", edgecolor="black")
-ax.set_xlabel("Math Score")
-ax.set_ylabel("Count")
-st.pyplot(fig)
-
-# --- Average Score by Gender ---
-st.header("5️⃣ Average Score by Gender")
-if "gender" in df.columns:
-    means = df.groupby("gender")["average_score"].mean().sort_values()
-    fig, ax = plt.subplots(figsize=(5, 4))
-    sns.barplot(x=means.index, y=means.values, ax=ax, palette="pastel")
-    ax.set_xlabel("Gender")
-    ax.set_ylabel("Average Score")
-    st.pyplot(fig)
-else:
-    st.info("ℹ️ Column 'gender' not found — skipping this section.")
-
-# --- Optional Plots ---
-if show_boxplot and "gender" in df.columns:
-    st.header("6️⃣ Score Distribution by Gender (Boxplot)")
-    fig, ax = plt.subplots(figsize=(7, 4))
-    sns.boxplot(x="gender", y="average_score", data=df, palette="Set2", ax=ax)
+    st.markdown("### 🎯 Distribution of Scores")
+    fig, ax = plt.subplots(figsize=(8, 4))
+    sns.histplot(df["average_score"], bins=20, kde=True, color="#4C72B0", ax=ax)
+    ax.set_xlabel("Average Score")
     st.pyplot(fig)
 
-if show_pairplot:
-    st.header("7️⃣ Pairplot (Score Relationships)")
-    st.info("This may take a moment for larger datasets.")
+# ------------------ Descriptive Stats ------------------
+with tab2:
+    st.subheader("📊 Descriptive Statistics")
+    st.dataframe(df[["math_score", "reading_score", "writing_score", "average_score"]].describe())
+
+    st.markdown("### 📘 Standard Deviation")
+    st.dataframe(df[["math_score", "reading_score", "writing_score"]].std().to_frame("Std Dev"))
+
+# ------------------ Correlation Tab ------------------
+with tab3:
+    st.subheader("🔥 Correlation Matrix")
+    fig, ax = plt.subplots(figsize=(6, 4))
+    sns.heatmap(df[["math_score", "reading_score", "writing_score", "average_score"]].corr(), 
+                annot=True, cmap="coolwarm", fmt=".2f", ax=ax)
+    st.pyplot(fig)
+
+    st.markdown("### 📉 Pairwise Relationships")
+    st.caption("Use this to spot trends and relationships between score types.")
     fig = sns.pairplot(df[["math_score", "reading_score", "writing_score", "average_score"]], diag_kind="hist")
     st.pyplot(fig)
+
+# ------------------ Gender Analysis Tab ------------------
+with tab4:
+    if "gender" in df.columns:
+        st.subheader("📚 Average Scores by Gender")
+        means = df.groupby("gender")[["math_score", "reading_score", "writing_score", "average_score"]].mean().round(2)
+        st.dataframe(means)
+
+        st.markdown("### 🧭 Visualization")
+        fig, ax = plt.subplots(figsize=(7, 4))
+        means.plot(kind="bar", ax=ax, color=["#6BAED6", "#FD8D3C", "#74C476", "#9E9AC8"])
+        ax.set_ylabel("Average Score")
+        ax.set_xlabel("Gender")
+        st.pyplot(fig)
+
+        st.markdown("### 🎨 Score Distribution by Gender")
+        fig, ax = plt.subplots(figsize=(7, 4))
+        sns.boxplot(data=df, x="gender", y="average_score", palette="Set2", ax=ax)
+        st.pyplot(fig)
+    else:
+        st.info("ℹ️ Column 'gender' not found in dataset.")
+
+# ------------------ Raw Data Tab ------------------
+with tab5:
+    if show_raw:
+        st.subheader("📦 Raw Data Preview")
+        st.dataframe(df)
+    else:
+        st.info("Enable **Show Raw Data** in the sidebar to view the full dataset.")
